@@ -179,15 +179,23 @@ class graphDBdataAccess:
             edition = result_dbms_component[0]["edition"] if result_dbms_component else "community"
 
             if edition == "enterprise":
+                # Check direct write privileges OR admin role (admin inherits all privileges)
                 write_query = """
-                SHOW USER PRIVILEGES 
-                YIELD action, graph
-                WHERE graph = $database AND action = 'write'
+                SHOW USER PRIVILEGES
+                YIELD action, graph, role
+                WHERE (graph = $database OR graph = '*') AND (action = 'write' OR role = 'admin' OR role = 'PUBLIC')
                 RETURN COUNT(*) AS writeAccessCount
                 """
                 logging.info(f"Checking write access for database: {database}")
                 write_result = self.graph.query(write_query, params={"database": database}, session_params={"database": self.graph._database})
-                write_access = write_result[0]["writeAccessCount"] > 0 if write_result else False
+                if write_result and write_result[0]["writeAccessCount"] > 0:
+                    write_access = True
+                else:
+                    # Fallback: check if user has admin role
+                    role_query = "SHOW CURRENT USER YIELD roles RETURN roles"
+                    role_result = self.graph.query(role_query, session_params={"database": self.graph._database})
+                    roles = role_result[0]["roles"] if role_result else []
+                    write_access = "admin" in roles or "editor" in roles or "publisher" in roles
                 logging.info(f"Write access: {write_access}")
                 return write_access
             else:
