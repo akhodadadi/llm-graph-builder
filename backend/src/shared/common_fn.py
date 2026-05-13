@@ -192,22 +192,30 @@ def load_embedding_model(embedding_provider: str, embedding_model_name: str):
     provider = embedding_provider.lower()
     model = embedding_model_name
 
-    if provider not in model_dimensions or model not in model_dimensions[provider]:
-        raise ValueError(f"Unsupported provider/model: {provider}/{model}")
-
-    dimension = model_dimensions[provider][model]
-
-    if provider == "openai":
-        embeddings = OpenAIEmbeddings(model=model)
-    elif provider == "gemini":
-        embeddings = VertexAIEmbeddings(model=model)
-    elif provider == "titan":
-        embeddings = _get_bedrock_embeddings(model)
-    elif provider == "sentence-transformer":
-        model_path = "./local_model" 
-        embeddings = _get_sentence_transformer_embedding(model, model_path)
+    if provider == "vllm":
+        vllm_endpoint = get_value_from_env("VLLM_ENDPOINT")
+        vllm_api_key = get_value_from_env("VLLM_API_KEY")
+        if not vllm_endpoint:
+            raise ValueError("VLLM_ENDPOINT environment variable must be set for vllm embedding provider")
+        dimension = int(get_value_from_env("VLLM_EMBEDDING_DIMENSION", "768"))
+        embeddings = OpenAIEmbeddings(model=model, base_url=vllm_endpoint, api_key=vllm_api_key or "none")
     else:
-        raise ValueError(f"Unknown embedding provider: {provider}")
+        if provider not in model_dimensions or model not in model_dimensions[provider]:
+            raise ValueError(f"Unsupported provider/model: {provider}/{model}")
+
+        dimension = model_dimensions[provider][model]
+
+        if provider == "openai":
+            embeddings = OpenAIEmbeddings(model=model)
+        elif provider == "gemini":
+            embeddings = VertexAIEmbeddings(model=model)
+        elif provider == "titan":
+            embeddings = _get_bedrock_embeddings(model)
+        elif provider == "sentence-transformer":
+            model_path = "./local_model"
+            embeddings = _get_sentence_transformer_embedding(model, model_path)
+        else:
+            raise ValueError(f"Unknown embedding provider: {provider}")
 
     logging.info(f"Embedding: Using {provider} - {model}, Dimension: {dimension}")
     return embeddings, dimension
